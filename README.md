@@ -1,36 +1,57 @@
-import matplotlib.pyplot as plt
+from flask import Flask, render_template, request, redirect, url_for, session
+from flask_sqlalchemy import SQLAlchemy
+from models import db, Cycle, User
 
-# Data
-a = [1, 2, 3, 4, 5]
-b = [0, 0.6, 0.2, 15, 10]
-c = [4, 2, 6, 8, 3, 20, 13, 15]
+app = Flask(_name_)
+app.secret_key = 'your_secret_key'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
+db.init_app(app)
 
-# Plotting
-plt.plot(a, label='1st Rep')
-plt.plot(b, 'or', label='2nd Rep')
-plt.plot(list(range(0, 22, 3)), label='3rd Rep')
-plt.plot(c, label='4th Rep')
+@app.before_first_request
+def create_tables():
+    db.create_all()
+    if not User.query.first():
+        db.session.add(User(email='admin@cycles.com', password='123456'))
+        db.session.commit()
 
-# Customizing axes and ticks
-plt.xlabel('Day ->')
-plt.ylabel('Temp ->')
-plt.xticks(list(range(-3, 10)))
-plt.yticks(list(range(-3, 20, 3)))
+@app.route('/', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        user = User.query.filter_by(email=request.form['email']).first()
+        if user and user.password == request.form['password']:
+            session['user'] = user.email
+            return redirect(url_for('dashboard'))
+        return "Login failed"
+    return render_template('login.html')
 
-# Removing top and right spines
-ax = plt.gca()
-ax.spines['right'].set_visible(False)
-ax.spines['top'].set_visible(False)
-ax.spines['left'].set_bounds(-3, 40)
+@app.route('/dashboard')
+def dashboard():
+    if 'user' not in session:
+        return redirect('/')
+    cycles = Cycle.query.all()
+    return render_template('dashboard.html', cycles=cycles)
 
-# Adding legend
-ax.legend()
+@app.route('/add_cycle', methods=['POST'])
+def add_cycle():
+    if 'user' not in session:
+        return redirect('/')
+    new_cycle = Cycle(
+        brand=request.form['brand'],
+        model=request.form['model'],
+        quantity=int(request.form['quantity']),
+        price=float(request.form['price'])
+    )
+    db.session.add(new_cycle)
+    db.session.commit()
+    return redirect(url_for('dashboard'))
 
-# Annotating the plot
-plt.annotate('Temperature V / s Days', xy=(1.01, -2.15))
+@app.route('/delete/<int:id>')
+def delete_cycle(id):
+    if 'user' not in session:
+        return redirect('/')
+    Cycle.query.filter_by(id=id).delete()
+    db.session.commit()
+    return redirect(url_for('dashboard'))
 
-# Title
-plt.title('All Features Discussed')
-
-# Display the plot
-plt.show()
+if _name_ == '_main_':
+    app.run(debug=True)
